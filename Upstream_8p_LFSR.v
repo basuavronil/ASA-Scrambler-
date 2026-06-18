@@ -1,3 +1,31 @@
+// =============================================================================
+// Upstream Scrambler — 8 Parallel LFSRs
+// Polynomial : g_Up(x) = x^23 + x^18 + 1
+// 
+// 8 LFSRs run in parallel each clock cycle, producing 8 scrambler bits
+// simultaneously as s0[7:0].
+//
+// Seed rules (spec section 3.2.19):
+//   LinkID=0 -> base_seed = 23'h000001
+//   LinkID=1 -> base_seed = 23'h000003
+//   LinkID=2 -> base_seed = 23'h000005
+//   LinkID=3 -> base_seed = 23'h000007
+//
+// Seed chain across 8 LFSRs:
+//   LFSR[0] seed = base_seed
+//   LFSR[1] seed = circ_right_shift( LFSR[0] seed )
+//   LFSR[2] seed = circ_right_shift( LFSR[1] seed )
+//   ...
+//   LFSR[7] seed = circ_right_shift( LFSR[6] seed )
+//
+// Ports:
+//   clk       - clock
+//   rst       - synchronous active-high reset (loads seeds)
+//   en        - enable / clock gate
+//   link_id   - 2-bit LinkID (selects base seed)
+//   s0        - 8-bit parallel scrambler output (1 bit per LFSR per cycle)
+//   state     - 8x23 = 184-bit flat-packed internal states (debug)
+// =============================================================================
 
 module lfsr_upstream_8p (
     input  wire       clk,
@@ -58,14 +86,14 @@ module lfsr_upstream_8p (
             lfsr[7] <= (seed[7] == 23'd0) ? 23'd1 : seed[7];
         end else if (en) begin
             // Each LFSR shifts left independently, same polynomial
-            lfsr[0] <= {lfsr[0][21:0], lfsr[0][22] ^ lfsr[0][17]};
-            lfsr[1] <= {lfsr[1][21:0], lfsr[1][22] ^ lfsr[1][17]};
-            lfsr[2] <= {lfsr[2][21:0], lfsr[2][22] ^ lfsr[2][17]};
-            lfsr[3] <= {lfsr[3][21:0], lfsr[3][22] ^ lfsr[3][17]};
-            lfsr[4] <= {lfsr[4][21:0], lfsr[4][22] ^ lfsr[4][17]};
-            lfsr[5] <= {lfsr[5][21:0], lfsr[5][22] ^ lfsr[5][17]};
-            lfsr[6] <= {lfsr[6][21:0], lfsr[6][22] ^ lfsr[6][17]};
-            lfsr[7] <= {lfsr[7][21:0], lfsr[7][22] ^ lfsr[7][17]};
+          lfsr[0] <= {lfsr[0][22] ^ lfsr[0][17], lfsr[0][21:1]};
+          lfsr[1] <= {lfsr[1][22] ^ lfsr[1][17], lfsr[1][21:1]};
+          lfsr[2] <= {lfsr[2][22] ^ lfsr[2][17], lfsr[2][21:1]};
+          lfsr[3] <= {lfsr[3][22] ^ lfsr[3][17], lfsr[3][21:1]};
+          lfsr[4] <= {lfsr[4][22] ^ lfsr[4][17], lfsr[4][21:1]};
+          lfsr[5] <= {lfsr[5][22] ^ lfsr[5][17], lfsr[5][21:1]};
+          lfsr[6] <= {lfsr[6][22] ^ lfsr[6][17], lfsr[6][21:1]};
+          lfsr[7] <= {lfsr[7][22] ^ lfsr[7][17], lfsr[7][21:1]};
         end
     end
 
