@@ -1,10 +1,11 @@
 // =============================================================================
-// Testbench : lfsr_upstream_8p
+// Testbench : lfsr_upstream_tb
 // Tests:
 //   1. All 4 LinkIDs — correct seeds loaded across all 8 LFSRs
 //   2. s0[7:0] all bits toggle (non-zero output after warmup)
 //   3. Enable gate — all states freeze when en=0
 //   4. Re-reset with different LinkID changes seeds correctly
+//   5. Parallel Combinational Scrambling — 8-bit XOR operation check per cycle
 // =============================================================================
 `timescale 1ns/1ps
 
@@ -13,22 +14,26 @@ module lfsr_upstream_tb;
     // -------------------------------------------------------------------------
     // DUT signals
     // -------------------------------------------------------------------------
-    reg        clk;
-    reg        rst;
-    reg        lfsr_en_up;
-    reg  [1:0] link_id;
-  
-    wire [7:0]   s0;
+    reg         clk;
+    reg         rst;
+    reg         lfsr_en_up;
+    reg  [1:0]  link_id;
+    reg  [7:0]  data_in;        // Added parallel raw data input
+
+    wire [7:0]  data_out;       // Added parallel scrambled data output
+    wire [7:0]  s0;
     wire [183:0] state_out;
 
     // -------------------------------------------------------------------------
     // DUT
     // -------------------------------------------------------------------------
     lfsr_upstream_8p dut (
-        .clk       (clk),
-        .rst       (rst),
+        .clk        (clk),
+        .rst        (rst),
         .lfsr_en_up  (lfsr_en_up),
         .link_id   (link_id),
+        .data_in   (data_in),   // Connected
+        .data_out  (data_out),  // Connected
         .s0        (s0),
         .state_out (state_out)
     );
@@ -75,6 +80,7 @@ module lfsr_upstream_tb;
             link_id = lid;
             rst     = 1;
             lfsr_en_up = 0;
+            data_in = 8'h00; // Reset data_in
             repeat(3) @(posedge clk); #1;
             rst = 0;
         end
@@ -84,7 +90,7 @@ module lfsr_upstream_tb;
     // Task: verify all 8 LFSR seeds after reset
     // -------------------------------------------------------------------------
     task verify_seeds;
-        input [1:0]  lid;
+        input [1:0] lid;
         reg [22:0] base;
         reg [22:0] expected;
         reg [22:0] actual;
@@ -109,19 +115,31 @@ module lfsr_upstream_tb;
     endtask
 
     // -------------------------------------------------------------------------
-    // Task: run N cycles, print s0 and all 8 states
+    // Task: run N cycles, feed random data, and verify parallel XOR logic
     // -------------------------------------------------------------------------
     task run_cycles;
         input integer n;
         integer k;
+        reg [7:0] expected_scrambled;
         begin
             lfsr_en_up = 1;
             for (k = 0; k < n; k = k + 1) begin
-                @(posedge clk); #1;
-                $display("  cyc=%3d | s0=0x%02h (%08b) | st0=0x%06h st1=0x%06h st2=0x%06h st3=0x%06h",
-                         k, s0, s0,
-                         get_state(state_out,0), get_state(state_out,1),
-                         get_state(state_out,2), get_state(state_out,3));
+                // Generate a pseudo-random 8-bit data vector to stream in
+                data_in = $urandom & 8'hFF;
+                
+                @(posedge clk); #1; // Sample shortly after the edge
+                
+                // Calculate expected value: bit-for-bit XOR of data_in and s0
+                expected_scrambled = data_in ^ s0;
+                
+                $display("  cyc=%3d | din=0x%02h | s0=0x%02h (%08b) | dout=0x%02h | XOR: %s",
+                         k, data_in, s0, s0, data_out,
+                         (data_out === expected_scrambled) ? "PASS" : "FAIL");
+                         
+                if (data_out !== expected_scrambled) begin
+                    $display("    [ERROR] Parallel XOR Mismatch! Expected=0x%02h, Got=0x%02h", 
+                             expected_scrambled, data_out);
+                end
             end
         end
     endtask
@@ -130,7 +148,6 @@ module lfsr_upstream_tb;
     // Main stimulus
     // -------------------------------------------------------------------------
     reg [183:0] frozen_state;
-    integer i;
 
     initial begin
         $dumpfile("lfsr_upstream.vcd");
@@ -139,9 +156,10 @@ module lfsr_upstream_tb;
         rst     = 1;
         lfsr_en_up      = 0;
         link_id = 0;
+        data_in = 8'h00;
 
         // ============================================================
-        // TEST 1 : LinkID=0 — seed check + 30 cycles (warmup needed)
+        // TEST 1 : LinkID=0 — seed check + 30 cycles
         // ============================================================
         $display("\n============================================================");
         $display(" TEST 1 : LinkID=0  (base seed = 0x000001)");
@@ -185,19 +203,32 @@ module lfsr_upstream_tb;
         // TEST 5 : Enable gate
         // ============================================================
         $display("\n============================================================");
-        $display(" TEST 5 : Enable gate  (LinkID=0, run 25 cycles first)");
+        $display(" TEST 5 : Enable gate & Combinational Flow on Freeze");
         $display("============================================================");
         do_reset(2'd0);
         lfsr_en_up = 1;
         repeat(25) @(posedge clk); #1;
         frozen_state = state_out;
         $display("  State frozen: st0=0x%06h  s0=0x%02h", get_state(state_out,0), s0);
+        
+        // Turn off enable gate
         lfsr_en_up = 0;
+        
+        // Change data inputs while LFSR is frozen to verify combinational path is active
+        data_in = 8'h55; #1;
+        $display("  [Frozen Input 1] din=0x%02h | s0=0x%02h | dout=0x%02h (Expected: 0x%02h)", 
+                 data_in, s0, data_out, (data_in ^ s0));
+        
+        data_in = 8'hAA; #1;
+        $display("  [Frozen Input 2] din=0x%02h | s0=0x%02h | dout=0x%02h (Expected: 0x%02h)", 
+                 data_in, s0, data_out, (data_in ^ s0));
+
         repeat(4) @(posedge clk); #1;
         if (state_out === frozen_state)
             $display("  Enable gate PASS — all states held");
         else
             $display("  Enable gate FAIL");
+            
         $display("  -- Resume --");
         run_cycles(5);
 
