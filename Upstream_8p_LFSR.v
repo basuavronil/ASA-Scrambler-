@@ -1,39 +1,12 @@
-// =============================================================================
-// Upstream Scrambler — 8 Parallel LFSRs
-// Polynomial : g_Up(x) = x^23 + x^18 + 1
-// 
-// 8 LFSRs run in parallel each clock cycle, producing 8 scrambler bits
-// simultaneously as s0[7:0].
-//
-// Seed rules (spec section 3.2.19):
-//   LinkID=0 -> base_seed = 23'h000001
-//   LinkID=1 -> base_seed = 23'h000003
-//   LinkID=2 -> base_seed = 23'h000005
-//   LinkID=3 -> base_seed = 23'h000007
-//
-// Seed chain across 8 LFSRs:
-//   LFSR[0] seed = base_seed
-//   LFSR[1] seed = circ_right_shift( LFSR[0] seed )
-//   LFSR[2] seed = circ_right_shift( LFSR[1] seed )
-//   ...
-//   LFSR[7] seed = circ_right_shift( LFSR[6] seed )
-//
-// Ports:
-//   clk       - clock
-//   rst       - synchronous active-high reset (loads seeds)
-//   en        - enable / clock gate
-//   link_id   - 2-bit LinkID (selects base seed)
-//   s0        - 8-bit parallel scrambler output (1 bit per LFSR per cycle)
-//   state     - 8x23 = 184-bit flat-packed internal states (debug)
-// =============================================================================
-
 module lfsr_upstream_8p (
-    input  wire       clk,
-    input  wire       rst,
-    input  wire       lfsr_en_up,
-    input  wire [1:0] link_id,
-    output wire [7:0] s0,           // 8-bit parallel output, 1 bit per LFSR
-    output wire [183:0] state_out   // flat-packed states [LFSR7:LFSR0], 23 bits each
+    input  wire         clk,
+    input  wire         rst,
+    input  wire         lfsr_en_up,
+    input  wire [1:0]   link_id,
+    input  wire [7:0]   data_in,     // 8-bit parallel raw data input
+    output wire [7:0]   data_out,    // 8-bit parallel scrambled data output
+    output wire [7:0]   s0,          // 8-bit parallel output, 1 bit per LFSR
+    output wire [183:0] state_out    // flat-packed states [LFSR7:LFSR0], 23 bits each
 );
 
     // -------------------------------------------------------------------------
@@ -71,8 +44,6 @@ module lfsr_upstream_8p (
     // -------------------------------------------------------------------------
     reg [22:0] lfsr [0:7];
 
-    integer i;
-
     always @(posedge clk) begin
         if (rst) begin
             // Load seeds, guard against all-zero
@@ -85,29 +56,36 @@ module lfsr_upstream_8p (
             lfsr[6] <= (seed[6] == 23'd0) ? 23'd1 : seed[6];
             lfsr[7] <= (seed[7] == 23'd0) ? 23'd1 : seed[7];
         end else if (lfsr_en_up) begin
-            // Each LFSR shifts left independently, same polynomial
-          lfsr[0] <= {lfsr[0][22] ^ lfsr[0][17], lfsr[0][21:1]};
-          lfsr[1] <= {lfsr[1][22] ^ lfsr[1][17], lfsr[1][21:1]};
-          lfsr[2] <= {lfsr[2][22] ^ lfsr[2][17], lfsr[2][21:1]};
-          lfsr[3] <= {lfsr[3][22] ^ lfsr[3][17], lfsr[3][21:1]};
-          lfsr[4] <= {lfsr[4][22] ^ lfsr[4][17], lfsr[4][21:1]};
-          lfsr[5] <= {lfsr[5][22] ^ lfsr[5][17], lfsr[5][21:1]};
-          lfsr[6] <= {lfsr[6][22] ^ lfsr[6][17], lfsr[6][21:1]};
-          lfsr[7] <= {lfsr[7][22] ^ lfsr[7][17], lfsr[7][21:1]};
+            // Each LFSR shifts independently, same polynomial
+            lfsr[0] <= {lfsr[0][22] ^ lfsr[0][17], lfsr[0][21:1]};
+            lfsr[1] <= {lfsr[1][22] ^ lfsr[1][17], lfsr[1][21:1]};
+            lfsr[2] <= {lfsr[2][22] ^ lfsr[2][17], lfsr[2][21:1]};
+            lfsr[3] <= {lfsr[3][22] ^ lfsr[3][17], lfsr[3][21:1]};
+            lfsr[4] <= {lfsr[4][22] ^ lfsr[4][17], lfsr[4][21:1]};
+            lfsr[5] <= {lfsr[5][22] ^ lfsr[5][17], lfsr[5][21:1]};
+            lfsr[6] <= {lfsr[6][22] ^ lfsr[6][17], lfsr[6][21:1]};
+            lfsr[7] <= {lfsr[7][22] ^ lfsr[7][17], lfsr[7][21:1]};
         end
     end
 
     // -------------------------------------------------------------------------
-    // Output: s0[n] = MSB of LFSR[n]
+    // Output: s0[n] = Bit 0 of LFSR[n]
     // -------------------------------------------------------------------------
-  assign s0[0] = lfsr[0][0];
-  assign s0[1] = lfsr[1][0];
-  assign s0[2] = lfsr[2][0];
-  assign s0[3] = lfsr[3][0];
-  assign s0[4] = lfsr[4][0];
-  assign s0[5] = lfsr[5][0];
-  assign s0[6] = lfsr[6][0];
-  assign s0[7] = lfsr[7][0];
+    assign s0[0] = lfsr[0][0];
+    assign s0[1] = lfsr[1][0];
+    assign s0[2] = lfsr[2][0];
+    assign s0[3] = lfsr[3][0];
+    assign s0[4] = lfsr[4][0];
+    assign s0[5] = lfsr[5][0];
+    assign s0[6] = lfsr[6][0];
+    assign s0[7] = lfsr[7][0];
+
+    // -------------------------------------------------------------------------
+    // Parallel XOR Combinational Logic
+    // -------------------------------------------------------------------------
+    // This performs a bitwise XOR between the incoming data bus and the LFSR 
+    // stream bits in the exact same clock cycle.
+    assign data_out = data_in ^ s0;
 
     // Flat-pack states for debug: state_out[22:0]=LFSR0, [45:23]=LFSR1, ...
     assign state_out[22:0]    = lfsr[0];
