@@ -15,7 +15,7 @@ module lfsr_upstream_tb;
     // -------------------------------------------------------------------------
     reg        clk;
     reg        rst;
-    reg        lfsr_en;
+    reg        lfsr_en_up;
     reg  [1:0] link_id;
   
     wire [7:0]   s0;
@@ -27,7 +27,7 @@ module lfsr_upstream_tb;
     lfsr_upstream_8p dut (
         .clk       (clk),
         .rst       (rst),
-       .lfsr_en        (lfsr_en),
+        .lfsr_en_up  (lfsr_en_up),
         .link_id   (link_id),
         .s0        (s0),
         .state_out (state_out)
@@ -74,7 +74,7 @@ module lfsr_upstream_tb;
         begin
             link_id = lid;
             rst     = 1;
-            lfsr_en      = 0;
+            lfsr_en_up = 0;
             repeat(3) @(posedge clk); #1;
             rst = 0;
         end
@@ -115,7 +115,7 @@ module lfsr_upstream_tb;
         input integer n;
         integer k;
         begin
-            lfsr_en = 1;
+            lfsr_en_up = 1;
             for (k = 0; k < n; k = k + 1) begin
                 @(posedge clk); #1;
                 $display("  cyc=%3d | s0=0x%02h (%08b) | st0=0x%06h st1=0x%06h st2=0x%06h st3=0x%06h",
@@ -137,7 +137,7 @@ module lfsr_upstream_tb;
         $dumpvars(0, lfsr_upstream_tb);
 
         rst     = 1;
-        lfsr_en      = 0;
+        lfsr_en_up      = 0;
         link_id = 0;
 
         // ============================================================
@@ -188,11 +188,11 @@ module lfsr_upstream_tb;
         $display(" TEST 5 : Enable gate  (LinkID=0, run 25 cycles first)");
         $display("============================================================");
         do_reset(2'd0);
-        lfsr_en = 1;
+        lfsr_en_up = 1;
         repeat(25) @(posedge clk); #1;
         frozen_state = state_out;
         $display("  State frozen: st0=0x%06h  s0=0x%02h", get_state(state_out,0), s0);
-        lfsr_en = 0;
+        lfsr_en_up = 0;
         repeat(4) @(posedge clk); #1;
         if (state_out === frozen_state)
             $display("  Enable gate PASS — all states held");
