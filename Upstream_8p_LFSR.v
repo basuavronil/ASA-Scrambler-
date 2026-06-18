@@ -30,7 +30,7 @@
 module lfsr_upstream_8p (
     input  wire       clk,
     input  wire       rst,
-    input  wire       lfsr_en,
+    input  wire       lfsr_en_up,
     input  wire [1:0] link_id,
     output wire [7:0] s0,           // 8-bit parallel output, 1 bit per LFSR
     output wire [183:0] state_out   // flat-packed states [LFSR7:LFSR0], 23 bits each
@@ -84,7 +84,7 @@ module lfsr_upstream_8p (
             lfsr[5] <= (seed[5] == 23'd0) ? 23'd1 : seed[5];
             lfsr[6] <= (seed[6] == 23'd0) ? 23'd1 : seed[6];
             lfsr[7] <= (seed[7] == 23'd0) ? 23'd1 : seed[7];
-        end else if (lfsr_en) begin
+        end else if (lfsr_en_up) begin
             // Each LFSR shifts left independently, same polynomial
           lfsr[0] <= {lfsr[0][22] ^ lfsr[0][17], lfsr[0][21:1]};
           lfsr[1] <= {lfsr[1][22] ^ lfsr[1][17], lfsr[1][21:1]};
