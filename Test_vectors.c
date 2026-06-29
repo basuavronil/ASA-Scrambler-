@@ -9,7 +9,7 @@ typedef struct {
 } lfsr_downstream_t;
 
 // Helper function to extract bit values safely
-inline uint8_t get_bit(uint32_t val, uint8_t bit_pos) {
+static inline uint8_t get_bit(uint32_t val, uint8_t bit_pos) {
     return (val >> bit_pos) & 1;
 }
 
